@@ -2,7 +2,7 @@
 
 build:
 	@echo 'build docker...'
-	@docker build -t realjf/xcgo:go1.19 .
+	@docker build --network host --allow-insecure-entitlement security.insecure -t realjf/xcgo:go1.19 .
 
 
 push:

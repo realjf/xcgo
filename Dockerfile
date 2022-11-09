@@ -4,11 +4,11 @@
 # See https://github.com/neilotoole/xcgo
 ARG OSX_SDK="MacOSX11.3.sdk"
 ARG OSX_CODENAME="catalina"
-ARG OSX_VERSION_MIN="11.3"
+ARG OSX_VERSION_MIN="10.9"
 ARG OSX_SDK_BASEURL="https://github.com/neilotoole/xcgo/releases/download/v0.1"
 ARG OSX_SDK_PATH="./MacOSX_SDKs/"
 ARG OSX_SDK_SUM="d97054a0aaf60cb8e9224ec524315904f0309fbbbac763eb7736bdfbdad6efc8"
-ARG OSX_CROSS_COMMIT="de6ec57895713a090fee05cbc58e43b5d916ba33"
+ARG OSX_CROSS_COMMIT="50e86ebca7d14372febd0af8cd098705049161b9"
 ARG LIBTOOL_VERSION="2.4.6_1"
 ARG LIBTOOL_BASEURL="https://github.com/neilotoole/xcgo/releases/download/v0.1"
 ARG LIBTOOL_PATH="./libtool/"
@@ -75,6 +75,9 @@ COPY --from=snapbuilder /snap/bin/snapcraft /snap/bin/snapcraft
 # Generate locale and install dependencies.
 RUN apt-get update && apt-get dist-upgrade --yes && apt-get install --yes snapd sudo locales && locale-gen en_US.UTF-8
 
+
+COPY ./resolv.conf.override /etc/resolv.conf.override
+RUN --security=insecure cp /etc/resolv.conf.override /etc/resolv.conf
 # Set the proper environment.
 ENV LANG="en_US.UTF-8"
 ENV LANGUAGE="en_US:en"
@@ -83,6 +86,10 @@ ENV PATH="/snap/bin:$PATH"
 ENV SNAP="/snap/snapcraft/current"
 ENV SNAP_NAME="snapcraft"
 ENV SNAP_ARCH="amd64"
+
+EXPOSE 1089/tcp
+EXPOSE 8889/tcp
+
 
 ####################  golangcore  ####################
 FROM snapcore AS golangcore
@@ -95,12 +102,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common
 
 ENV GOPATH="/go"
+ENV GIT_CURL_VERBOSE=1
+ENV GIT_HTTP_MAX_REQUESTS=16
+ENV GIT_TRACE=1
+RUN git config --global http.postBuffer 524288000
 RUN mkdir -p "${GOPATH}/src"
 
 # As suggested here: https://github.com/golang/go/wiki/Ubuntu
 RUN add-apt-repository -y ppa:longsleep/golang-backports
-RUN if test -z "${GO_VERSION}"; then GO_VERSION=$(curl 'https://go.dev/VERSION?m=text'); fi && \
-    curl -L -o go.tar.gz https://go.dev/dl/${GO_VERSION}.linux-amd64.tar.gz && \
+RUN if test -z "${GO_VERSION}"; then GO_VERSION=$(curl -k 'https://go.dev/VERSION?m=text'); fi && \
+    curl -kL -o go.tar.gz https://go.dev/dl/${GO_VERSION}.linux-amd64.tar.gz && \
     rm -rf /usr/local/go && tar -C /usr/local -xzf go.tar.gz && \
     rm go.tar.gz
 RUN ln -s /usr/local/go /usr/lib/go
@@ -167,15 +178,15 @@ RUN  ${GIT} clone https://github.com/tpoechtrager/osxcross.git .  --verbose \
     && rm -rf ./.git
 
 RUN mkdir -p "${OSX_CROSS_PATH}/tarballs"
-# RUN curl -fsSviL "${OSX_SDK_BASEURL}/${OSX_SDK}.tar.xz" -o "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz"
+# RUN  curl -fsSviL "${OSX_SDK_BASEURL}/${OSX_SDK}.tar.xz" -o "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz"
 COPY "${OSX_SDK_PATH}${OSX_SDK}.tar.xz" "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz"
-RUN echo "${OSX_SDK_SUM}"  "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz" | sha256sum -c -
-
-RUN UNATTENDED=yes OSX_VERSION_MIN=${OSX_VERSION_MIN} ./build.sh
+RUN xz -d -k "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz"
+# RUN echo "${OSX_SDK_SUM}"  "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz" | sha256sum -c -
+RUN UNATTENDED=yes OSX_VERSION_MIN=${OSX_VERSION_MIN} OCDEBUG=1 ./build.sh
 
 RUN mkdir -p "${OSX_CROSS_PATH}/target/SDK/${OSX_SDK}/usr/"
-# RUN curl -fsSviL "${LIBTOOL_BASEURL}/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz" \
-COPY "${LIBTOOL_PATH}/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz" "${OSX_CROSS_PATH}/tarballs/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz"
+RUN  curl -fsSviL "${LIBTOOL_BASEURL}/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz"
+# COPY "${LIBTOOL_PATH}/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz" "${OSX_CROSS_PATH}/tarballs/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz"
 RUN gzip -dc "${OSX_CROSS_PATH}/tarballs/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz" | tar xf - \
     -C "${OSX_CROSS_PATH}/target/SDK/${OSX_SDK}/usr/" \
     --strip-components=2 \
@@ -188,13 +199,14 @@ WORKDIR /root
 
 ####################  docker  ####################
 FROM osx-cross AS docker
+
 RUN apt-get update -y && apt-get install -y --no-install-recommends \
     apt-transport-https \
     ca-certificates \
     gnupg-agent
 
 
-RUN curl -fSvL "https://download.docker.com/linux/ubuntu/gpg" | apt-key add - && \
+RUN  curl -fSvL "https://download.docker.com/linux/ubuntu/gpg" | apt-key add - && \
     add-apt-repository \
     "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
     $(lsb_release -cs) \
@@ -215,16 +227,16 @@ ARG GOLANGCI_LINT_VERSION
 ARG GIT
 ARG DISABLE_GIT_SSL
 
-RUN wget "${GORELEASER_DOWNLOAD_URL}"; \
+RUN  wget "${GORELEASER_DOWNLOAD_URL}"; \
     tar -xzf $GORELEASER_DOWNLOAD_FILE -C /usr/bin/ goreleaser; \
     rm $GORELEASER_DOWNLOAD_FILE;
 
 # Add mage - https://magefile.org
 RUN ${DISABLE_GIT_SSL}
-RUN cd /tmp && ${GIT} clone https://github.com/magefile/mage.git  --verbose && cd mage && go run bootstrap.go && rm -rf /tmp/mage
+RUN cd /tmp &&  ${GIT} clone https://github.com/magefile/mage.git  --verbose && cd mage && go run bootstrap.go && rm -rf /tmp/mage
 
 # https://github.com/golangci/golangci-lint
-RUN curl -SfvL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin "v${GOLANGCI_LINT_VERSION}"
+RUN  curl -SfvL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin "v${GOLANGCI_LINT_VERSION}"
 
 
 
@@ -233,6 +245,7 @@ FROM gotools AS xcgo-final
 LABEL maintainer="neilotoole@apache.org"
 ENV PATH=${OSX_CROSS_PATH}/target/bin:$PATH:${GOPATH}/bin
 ENV CGO_ENABLED=1
+ENV GOPROXY="https://goproxy.cn,direct"
 
 WORKDIR /root
 COPY ./entrypoint.sh /entrypoint.sh
