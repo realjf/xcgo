@@ -2,9 +2,9 @@
 # cross-compiling image It can build CGo apps on macOS, Linux, and Windows.
 # It also contains supporting tools such as docker and snapcraft.
 # See https://github.com/neilotoole/xcgo
-ARG OSX_SDK="MacOSX10.15.sdk"
+ARG OSX_SDK="MacOSX11.3.sdk"
 ARG OSX_CODENAME="catalina"
-ARG OSX_VERSION_MIN="10.10"
+ARG OSX_VERSION_MIN="11.3"
 ARG OSX_SDK_BASEURL="https://github.com/neilotoole/xcgo/releases/download/v0.1"
 ARG OSX_SDK_SUM="d97054a0aaf60cb8e9224ec524315904f0309fbbbac763eb7736bdfbdad6efc8"
 ARG OSX_CROSS_COMMIT="de6ec57895713a090fee05cbc58e43b5d916ba33"
@@ -29,10 +29,10 @@ ARG UBUNTU
 # This section lifted from snapcore/snapcraft:stable
 # Grab dependencies
 RUN apt-get update && apt-get dist-upgrade -y && apt-get install -y \
-      curl \
-      jq \
-      lsb-core \
-      squashfs-tools
+    curl \
+    jq \
+    lsb-core \
+    squashfs-tools
 
 
 # Grab the core snap (for backwards compatibility) from the stable channel and
@@ -96,9 +96,9 @@ RUN mkdir -p "${GOPATH}/src"
 # As suggested here: https://github.com/golang/go/wiki/Ubuntu
 RUN add-apt-repository -y ppa:longsleep/golang-backports
 RUN if test -z "${GO_VERSION}"; then GO_VERSION=$(curl 'https://go.dev/VERSION?m=text'); fi && \
-	curl -L -o go.tar.gz https://go.dev/dl/${GO_VERSION}.linux-amd64.tar.gz && \
-	rm -rf /usr/local/go && tar -C /usr/local -xzf go.tar.gz && \
-	rm go.tar.gz
+    curl -L -o go.tar.gz https://go.dev/dl/${GO_VERSION}.linux-amd64.tar.gz && \
+    rm -rf /usr/local/go && tar -C /usr/local -xzf go.tar.gz && \
+    rm go.tar.gz
 RUN ln -s /usr/local/go /usr/lib/go
 RUN ln -s /usr/local/go/bin/go /usr/bin/go
 RUN ln -s /usr/local/go/bin/gofmt /usr/bin/gofmt
@@ -154,8 +154,8 @@ ENV OSX_CROSS_PATH=/osxcross
 
 WORKDIR "${OSX_CROSS_PATH}"
 RUN git clone https://github.com/tpoechtrager/osxcross.git . \
- && git checkout -q "${OSX_CROSS_COMMIT}" \
- && rm -rf ./.git
+    && git checkout -q "${OSX_CROSS_COMMIT}" \
+    && rm -rf ./.git
 
 RUN curl -fsSL "${OSX_SDK_BASEURL}/${OSX_SDK}.tar.xz" -o "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz"
 RUN echo "${OSX_SDK_SUM}"  "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz" | sha256sum -c -
@@ -164,11 +164,11 @@ RUN UNATTENDED=yes OSX_VERSION_MIN=${OSX_VERSION_MIN} ./build.sh
 
 RUN mkdir -p "${OSX_CROSS_PATH}/target/SDK/${OSX_SDK}/usr/"
 RUN curl -fsSL "${LIBTOOL_BASEURL}/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz" \
-	| gzip -dc | tar xf - \
-		-C "${OSX_CROSS_PATH}/target/SDK/${OSX_SDK}/usr/" \
-		--strip-components=2 \
-		"libtool/${LIBTOOL_VERSION}/include/" \
-		"libtool/${LIBTOOL_VERSION}/lib/"
+    | gzip -dc | tar xf - \
+    -C "${OSX_CROSS_PATH}/target/SDK/${OSX_SDK}/usr/" \
+    --strip-components=2 \
+    "libtool/${LIBTOOL_VERSION}/include/" \
+    "libtool/${LIBTOOL_VERSION}/lib/"
 
 WORKDIR /root
 
@@ -183,10 +183,10 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
 
 
 RUN curl -fsSL "https://download.docker.com/linux/ubuntu/gpg" | apt-key add - && \
-   add-apt-repository \
-   "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
-   $(lsb_release -cs) \
-   stable"
+    add-apt-repository \
+    "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
+    $(lsb_release -cs) \
+    stable"
 
 RUN apt-get update && apt-get install -y docker-ce docker-ce-cli
 
