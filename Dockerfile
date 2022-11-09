@@ -6,14 +6,18 @@ ARG OSX_SDK="MacOSX11.3.sdk"
 ARG OSX_CODENAME="catalina"
 ARG OSX_VERSION_MIN="11.3"
 ARG OSX_SDK_BASEURL="https://github.com/neilotoole/xcgo/releases/download/v0.1"
+ARG OSX_SDK_PATH="./MacOSX_SDKs/"
 ARG OSX_SDK_SUM="d97054a0aaf60cb8e9224ec524315904f0309fbbbac763eb7736bdfbdad6efc8"
 ARG OSX_CROSS_COMMIT="de6ec57895713a090fee05cbc58e43b5d916ba33"
 ARG LIBTOOL_VERSION="2.4.6_1"
 ARG LIBTOOL_BASEURL="https://github.com/neilotoole/xcgo/releases/download/v0.1"
+ARG LIBTOOL_PATH="./libtool/"
 ARG GOLANGCI_LINT_VERSION="1.42.1"
 ARG GORELEASER_VERSION="0.182.1"
 ARG GO_VERSION=""
 ARG UBUNTU=bionic
+ARG DISABLE_GIT_SSL="git config --global http.sslVerify false"
+ARG GIT="git"
 
 
 
@@ -145,26 +149,34 @@ FROM devtools AS osx-cross
 ARG OSX_SDK
 ARG OSX_CODENAME
 ARG OSX_SDK_BASEURL
+ARG OSX_SDK_PATH
 ARG OSX_SDK_SUM
 ARG OSX_CROSS_COMMIT
 ARG OSX_VERSION_MIN
 ARG LIBTOOL_VERSION
 ARG LIBTOOL_BASEURL
+ARG LIBTOOL_PATH
+ARG GIT
+ARG DISABLE_GIT_SSL
 ENV OSX_CROSS_PATH=/osxcross
 
 WORKDIR "${OSX_CROSS_PATH}"
-RUN git clone https://github.com/tpoechtrager/osxcross.git . \
-    && git checkout -q "${OSX_CROSS_COMMIT}" \
+RUN ${DISABLE_GIT_SSL}
+RUN  ${GIT} clone https://github.com/tpoechtrager/osxcross.git .  --verbose \
+    && ${GIT} checkout -q "${OSX_CROSS_COMMIT}" \
     && rm -rf ./.git
 
-RUN curl -fsSL "${OSX_SDK_BASEURL}/${OSX_SDK}.tar.xz" -o "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz"
+RUN mkdir -p "${OSX_CROSS_PATH}/tarballs"
+# RUN curl -fsSviL "${OSX_SDK_BASEURL}/${OSX_SDK}.tar.xz" -o "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz"
+COPY "${OSX_SDK_PATH}${OSX_SDK}.tar.xz" "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz"
 RUN echo "${OSX_SDK_SUM}"  "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz" | sha256sum -c -
 
 RUN UNATTENDED=yes OSX_VERSION_MIN=${OSX_VERSION_MIN} ./build.sh
 
 RUN mkdir -p "${OSX_CROSS_PATH}/target/SDK/${OSX_SDK}/usr/"
-RUN curl -fsSL "${LIBTOOL_BASEURL}/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz" \
-    | gzip -dc | tar xf - \
+# RUN curl -fsSviL "${LIBTOOL_BASEURL}/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz" \
+COPY "${LIBTOOL_PATH}/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz" "${OSX_CROSS_PATH}/tarballs/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz"
+RUN gzip -dc "${OSX_CROSS_PATH}/tarballs/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz" | tar xf - \
     -C "${OSX_CROSS_PATH}/target/SDK/${OSX_SDK}/usr/" \
     --strip-components=2 \
     "libtool/${LIBTOOL_VERSION}/include/" \
@@ -182,7 +194,7 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
     gnupg-agent
 
 
-RUN curl -fsSL "https://download.docker.com/linux/ubuntu/gpg" | apt-key add - && \
+RUN curl -fSvL "https://download.docker.com/linux/ubuntu/gpg" | apt-key add - && \
     add-apt-repository \
     "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
     $(lsb_release -cs) \
@@ -200,16 +212,19 @@ ARG GORELEASER_VERSION
 ARG GORELEASER_DOWNLOAD_FILE="goreleaser_Linux_x86_64.tar.gz"
 ARG GORELEASER_DOWNLOAD_URL="https://github.com/goreleaser/goreleaser/releases/download/v${GORELEASER_VERSION}/${GORELEASER_DOWNLOAD_FILE}"
 ARG GOLANGCI_LINT_VERSION
+ARG GIT
+ARG DISABLE_GIT_SSL
 
 RUN wget "${GORELEASER_DOWNLOAD_URL}"; \
     tar -xzf $GORELEASER_DOWNLOAD_FILE -C /usr/bin/ goreleaser; \
     rm $GORELEASER_DOWNLOAD_FILE;
 
 # Add mage - https://magefile.org
-RUN cd /tmp && git clone https://github.com/magefile/mage.git && cd mage && go run bootstrap.go && rm -rf /tmp/mage
+RUN ${DISABLE_GIT_SSL}
+RUN cd /tmp && ${GIT} clone https://github.com/magefile/mage.git  --verbose && cd mage && go run bootstrap.go && rm -rf /tmp/mage
 
 # https://github.com/golangci/golangci-lint
-RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin "v${GOLANGCI_LINT_VERSION}"
+RUN curl -SfvL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin "v${GOLANGCI_LINT_VERSION}"
 
 
 
