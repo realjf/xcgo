@@ -2,7 +2,8 @@
 
 build:
 	@echo 'build docker...'
-	@docker build --network host --allow-insecure-entitlement security.insecure -t realjf/xcgo:go1.19 .
+	@sudo docker build --network host -t realjf/xcgo-sdk11.3-catalina:go1.19  --build-arg OSX_VERSION_MIN=10.9 \
+	--build-arg OSX_SDK=MacOSX11.3.sdk .
 
 
 push:

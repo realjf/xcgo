@@ -18,6 +18,7 @@ ARG GO_VERSION=""
 ARG UBUNTU=bionic
 ARG DISABLE_GIT_SSL="git config --global http.sslVerify false"
 ARG GIT="git"
+ARG TIMEZONE="Asia/Shanghai"
 
 
 
@@ -75,9 +76,10 @@ COPY --from=snapbuilder /snap/bin/snapcraft /snap/bin/snapcraft
 # Generate locale and install dependencies.
 RUN apt-get update && apt-get dist-upgrade --yes && apt-get install --yes snapd sudo locales && locale-gen en_US.UTF-8
 
-
+# dns server
 COPY ./resolv.conf.override /etc/resolv.conf.override
-RUN --security=insecure cp /etc/resolv.conf.override /etc/resolv.conf
+RUN cp /etc/resolv.conf.override /etc/resolv.conf
+
 # Set the proper environment.
 ENV LANG="en_US.UTF-8"
 ENV LANGUAGE="en_US:en"
@@ -125,7 +127,8 @@ RUN go version
 FROM golangcore AS devtools
 # Dependencies for https://github.com/tpoechtrager/osxcross and some
 # other stuff.
-
+ARG TIMEZONE
+RUN sed -i "s/# deb-src/deb-src/g" /etc/apt/sources.list
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     clang \
@@ -150,7 +153,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     xz-utils \
     zlib1g-dev  \
-    zsh
+    zsh \
+    fakeroot dpkg-dev debian-keyring
+
+ENV TZ=${TIMEZONE}
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+RUN mkdir ~/git-openssl
+WORKDIR ~/git-openssl
+
+RUN apt-get build-dep git --yes
+RUN apt-get install libcurl4-openssl-dev --yes
+
+RUN apt-get source git 
+
+# We need to actually go into the git source directory
+# find -type f -name "*.dsc" -exec dpkg-source -x \{\} \;
+# This is where we actually change the library from one type to the other
+# Compile time, itself, is long. Skips the tests. Do so at your own peril
+# Build it.
+# Install
+RUN cd $(find -mindepth 1 -maxdepth 1 -type d -name "git-*") \
+    && sed -i -- 's/libcurl4-gnutls-dev/libcurl4-openssl-dev/' ./debian/control \
+    && sed -i -- '/TEST\s*=\s*test/d' ./debian/rules  \
+    && dpkg-buildpackage -rfakeroot -b \
+    && find .. -type f -name "git_*ubuntu*.deb" -exec sudo dpkg -i \{\} \;
 
 
 
@@ -173,20 +200,21 @@ ENV OSX_CROSS_PATH=/osxcross
 
 WORKDIR "${OSX_CROSS_PATH}"
 RUN ${DISABLE_GIT_SSL}
-RUN  ${GIT} clone https://github.com/tpoechtrager/osxcross.git .  --verbose \
-    && ${GIT} checkout -q "${OSX_CROSS_COMMIT}" \
-    && rm -rf ./.git
+RUN ${GIT} clone https://github.com/tpoechtrager/osxcross.git .  --verbose
+RUN ${GIT} checkout -q "${OSX_CROSS_COMMIT}" 
+RUN rm -rf ./.git
 
 RUN mkdir -p "${OSX_CROSS_PATH}/tarballs"
 # RUN  curl -fsSviL "${OSX_SDK_BASEURL}/${OSX_SDK}.tar.xz" -o "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz"
 COPY "${OSX_SDK_PATH}${OSX_SDK}.tar.xz" "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz"
-RUN xz -d -k "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz"
+#RUN xz -d -k "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz"
 # RUN echo "${OSX_SDK_SUM}"  "${OSX_CROSS_PATH}/tarballs/${OSX_SDK}.tar.xz" | sha256sum -c -
+RUN git config --global core.compression 0
 RUN UNATTENDED=yes OSX_VERSION_MIN=${OSX_VERSION_MIN} OCDEBUG=1 ./build.sh
 
 RUN mkdir -p "${OSX_CROSS_PATH}/target/SDK/${OSX_SDK}/usr/"
-RUN  curl -fsSviL "${LIBTOOL_BASEURL}/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz"
-# COPY "${LIBTOOL_PATH}/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz" "${OSX_CROSS_PATH}/tarballs/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz"
+# RUN  curl -fsSviL "${LIBTOOL_BASEURL}/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz"
+COPY "${LIBTOOL_PATH}/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz" "${OSX_CROSS_PATH}/tarballs/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz"
 RUN gzip -dc "${OSX_CROSS_PATH}/tarballs/libtool-${LIBTOOL_VERSION}.${OSX_CODENAME}.bottle.tar.gz" | tar xf - \
     -C "${OSX_CROSS_PATH}/target/SDK/${OSX_SDK}/usr/" \
     --strip-components=2 \
