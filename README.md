@@ -6,7 +6,7 @@ macOS, Windows and Linux CGo projects for arch `amd64`.
 
 `xcgo` has what gophers crave:
 
-- `go 1.17`
+- `go 1.19`
 - `OSX SDK` Catalina / `macOS 11.3` (will build on later versions)
 - `docker`
 - `snapcraft`

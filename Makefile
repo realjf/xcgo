@@ -2,7 +2,7 @@
 
 build:
 	@echo 'build docker...'
-	@sudo docker build --network host -t realjf/xcgo-sdk11.3-catalina:go1.19  --build-arg OSX_VERSION_MIN=10.9 \
+	@sudo docker build --network host -t realjf/xcgo-macsdk11.3-catalina-osxvermin11.3:go1.19  --build-arg OSX_VERSION_MIN=11.3 \
 	--build-arg OSX_SDK=MacOSX11.3.sdk .
 
 
